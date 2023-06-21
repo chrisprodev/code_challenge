@@ -1,13 +1,19 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import Moveable from "react-moveable";
+import { getImages } from "./services/images.service";
 
 const App = () => {
   const [moveableComponents, setMoveableComponents] = useState([]);
   const [selected, setSelected] = useState(null);
 
-  const addMoveable = () => {
+  /**
+   * Adds a new moveable component to the array of moveable components.
+   * The new component is created with random properties and an image selected from a list of images.
+   */
+  const addMoveable = async () => {
     // Create a new moveable component and add it to the array
-    const COLORS = ["red", "blue", "yellow", "green", "purple"];
+    // Fetches a list of images asynchronously
+    const IMAGES = await getImages();
 
     setMoveableComponents([
       ...moveableComponents,
@@ -17,22 +23,58 @@ const App = () => {
         left: 0,
         width: 100,
         height: 100,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        updateEnd: true
+        image: `url('${
+          IMAGES[Math.floor(Math.random() * IMAGES.length)]
+        }')`,
+        updateEnd: true,
       },
     ]);
   };
 
+  /**
+   * Deletes a moveable component from the array of moveable components based on its ID.
+   * Updates the array by removing the component with the specified ID.
+   *
+   * @param {number} id - The ID of the moveable component to delete.
+   */
+  const deleteMoveable = (id) => {
+    const newMoveables = moveableComponents.filter(
+      (moveable) => moveable.id !== id
+    );
+
+    setMoveableComponents(newMoveables);
+  };
+
+  /**
+   * Updates a moveable component in the array of moveable components based on its ID.
+   * Finds the component with the specified ID and updates its properties with the provided new component.
+   * Optionally, the `updateEnd` flag can be set to determine if the moveable component should update on the end of a move operation.
+   *
+   * @param {number} id - The ID of the moveable component to update.
+   * @param {object} newComponent - The new component object containing updated properties.
+   * @param {boolean} updateEnd - Optional. Determines if the moveable component should update on the end of a move operation. Default is `false`.
+   */
   const updateMoveable = (id, newComponent, updateEnd = false) => {
-    const updatedMoveables = moveableComponents.map((moveable, i) => {
-      if (moveable.id === id) {
-        return { id, ...newComponent, updateEnd };
+    const updatedMoveables = moveableComponents.map(
+      (moveable, i) => {
+        if (moveable.id === id) {
+          return { id, ...newComponent, updateEnd };
+        }
+        return moveable;
       }
-      return moveable;
-    });
+    );
     setMoveableComponents(updatedMoveables);
   };
 
+  /**
+   * Handles the start of a resize operation on a moveable component.
+   * Logs the direction of the resize operation.
+   * Checks if the resize operation is coming from the left handle.
+   * If so, it saves the initial left and width values of the moveable component and sets up an event handler to update the left value based on the change in width.
+   *
+   * @param {number} index - The index of the moveable component being resized.
+   * @param {object} e - The event object containing information about the resize operation.
+   */
   const handleResizeStart = (index, e) => {
     console.log("e", e.direction);
     // Check if the resize is coming from the left handle
@@ -55,7 +97,7 @@ const App = () => {
   };
 
   return (
-    <main style={{ height : "100vh", width: "100vw" }}>
+    <main className="main_container">
       <button onClick={addMoveable}>Add Moveable1</button>
       <div
         id="parent"
@@ -74,6 +116,7 @@ const App = () => {
             handleResizeStart={handleResizeStart}
             setSelected={setSelected}
             isSelected={selected === item.id}
+            deleteMoveable={deleteMoveable}
           />
         ))}
       </div>
@@ -90,11 +133,12 @@ const Component = ({
   width,
   height,
   index,
-  color,
+  image,
   id,
   setSelected,
   isSelected = false,
   updateEnd,
+  deleteMoveable,
 }) => {
   const ref = useRef();
 
@@ -104,13 +148,13 @@ const Component = ({
     width,
     height,
     index,
-    color,
+    image,
     id,
   });
 
   let parent = document.getElementById("parent");
   let parentBounds = parent?.getBoundingClientRect();
-  
+
   const onResize = async (e) => {
     // ACTUALIZAR ALTO Y ANCHO
     let newWidth = e.width;
@@ -129,7 +173,7 @@ const Component = ({
       left,
       width: newWidth,
       height: newHeight,
-      color,
+      image,
     });
 
     // ACTUALIZAR NODO REFERENCIA
@@ -141,7 +185,8 @@ const Component = ({
     let translateX = beforeTranslate[0];
     let translateY = beforeTranslate[1];
 
-    ref.current.style.transform = `translate(${translateX}px, ${translateY}px)`;
+    ref.current.style.transform = e.drag.transform;
+    //ref.current.style.transform = `translate(${translateX}px, ${translateY}px)`;
 
     setNodoReferencia({
       ...nodoReferencia,
@@ -150,38 +195,6 @@ const Component = ({
       top: top + translateY < 0 ? 0 : top + translateY,
       left: left + translateX < 0 ? 0 : left + translateX,
     });
-  };
-
-  const onResizeEnd = async (e) => {
-    let newWidth = e.lastEvent?.width;
-    let newHeight = e.lastEvent?.height;
-
-    const positionMaxTop = top + newHeight;
-    const positionMaxLeft = left + newWidth;
-
-    if (positionMaxTop > parentBounds?.height)
-      newHeight = parentBounds?.height - top;
-    if (positionMaxLeft > parentBounds?.width)
-      newWidth = parentBounds?.width - left;
-
-    const { lastEvent } = e;
-    const { drag } = lastEvent;
-    const { beforeTranslate } = drag;
-
-    const absoluteTop = top + beforeTranslate[1];
-    const absoluteLeft = left + beforeTranslate[0];
-
-    updateMoveable(
-      id,
-      {
-        top: absoluteTop,
-        left: absoluteLeft,
-        width: newWidth,
-        height: newHeight,
-        color,
-      },
-      true
-    );
   };
 
   return (
@@ -196,33 +209,55 @@ const Component = ({
           left: left,
           width: width,
           height: height,
-          background: color,
+          background: image,
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
         }}
         onClick={() => setSelected(id)}
-      />
-
+      >
+        <button onClick={() => deleteMoveable(id)}>Delete</button>
+      </div>
       <Moveable
-        target={isSelected && ref.current}
+        target={ref.current}
         resizable
         draggable
+        snappable
         onDrag={(e) => {
           updateMoveable(id, {
             top: e.top,
             left: e.left,
             width,
             height,
-            color,
+            image,
           });
         }}
         onResize={onResize}
-        onResizeEnd={onResizeEnd}
         keepRatio={false}
         throttleResize={1}
-        renderDirections={["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
+        renderDirections={[
+          "nw",
+          "n",
+          "ne",
+          "w",
+          "e",
+          "sw",
+          "s",
+          "se",
+        ]}
         edge={false}
         zoom={1}
         origin={false}
-        padding={{ left: 0, top: 0, right: 0, bottom: 0 }}
+        bounds={{
+          left: 0,
+          top: 0,
+          bottom: 0,
+          right: 0,
+          position: "css",
+        }}
+        snapThreshold={5}
+        verticalGuidelines={[50, 150, 250, 450, 550]}
+        horizontalGuidelines={[0, 100, 200, 400, 500]}
       />
     </>
   );
